@@ -275,7 +275,7 @@ Laufzeit whisper large-v3 (mit 0001): **17,8 s** auf der K80 (RTF 0,58, Encoder 
 
 - **Mehrere GPUs gemischter Generation:** Mit RTX 3090 und K80 gleichzeitig sichtbar kommt `CUDA kernel mul_mat_vec_f has no device code compatible with CUDA arch 370. ggml-cuda.cu was compiled for: __CUDA_ARCH_LIST__`. Dass dort wörtlich `__CUDA_ARCH_LIST__` steht statt einer Architekturliste, deutet darauf hin, dass CUDA 11.4 dieses Makro noch nicht kennt (es kam mit CUDA 11.5). Noch nicht untersucht.
 - **Fehler C auf M40 und P100:** vermutlich ebenfalls betroffen, ungetestet.
-- **Upstream:** Einreichung als Pull Request an ggml-org/llama.cpp geplant.
+- **Upstream:** eingereicht als Pull Request [ggml-org/llama.cpp#30338](https://github.com/ggml-org/llama.cpp/pull/30338) (2026-10-11).
 
 ## 8. Quellen
 

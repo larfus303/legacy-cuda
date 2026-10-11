@@ -46,7 +46,7 @@ scripts/    Mess- und Hilfsskripte
 - [x] Kepler-Fix für `CUBLAS_STATUS_ARCH_MISMATCH` (ggml) mit Doku
 - [x] Fix für fehlende Umrechner bei quantisierten Modellen ohne MMQ (ggml)
 - [x] Gegenmessung mit `test-backend-ops` (ohne Patch / 0001 / 0001+0002)
-- [ ] Fix als Pull Request an ggml-org/llama.cpp einreichen
+- [x] Fix als Pull Request an ggml-org/llama.cpp eingereicht: [#30338](https://github.com/ggml-org/llama.cpp/pull/30338)
 - [ ] Treiberbank: getestete Treiber-/CUDA-/Compiler-Kombinationen je Karte
 - [ ] Installationshilfe für Einsteiger (vom leeren System bis zur ersten Inferenz)
 - [ ] Benchmark-Doku: eigene Messwerte, u. a. Tesla K80 gegen RTX 3090
