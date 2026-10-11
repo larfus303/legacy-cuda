@@ -32,6 +32,7 @@ nvidia-smi --query-gpu=index,name,driver_version,memory.used --format=csv,nohead
 configure() {  # $1 = Build-Ordner, $2 = CUDA-Architektur
   [ -d "$1" ] || CC=gcc-10 CXX=g++-10 cmake -B "$1" -DGGML_CUDA=ON \
     -DCMAKE_CUDA_COMPILER=/usr/local/cuda-11.4/bin/nvcc \
+    -DCMAKE_CUDA_HOST_COMPILER=g++-10 \
     -DCMAKE_CUDA_ARCHITECTURES="$2" -DCMAKE_BUILD_TYPE=Release > "$LOG/cmake-$1.log" 2>&1
 }
 
@@ -46,7 +47,12 @@ set_patch() {  # $1 = none | 0001 | all
 test_ops() {  # $1 = Build-Ordner, $2 = GPU, $3 = Name
   local name="$3"
   cmake --build "$1" -j --target test-backend-ops > "$LOG/build-$name.log" 2>&1
-  echo "BUILD_EXIT=$?" >> "$LOG/build-$name.log"
+  local brc=$?
+  echo "BUILD_EXIT=$brc" >> "$LOG/build-$name.log"
+  if [ "$brc" -ne 0 ] || [ ! -x "./$1/bin/test-backend-ops" ]; then
+    printf "%-18s BUILD FEHLGESCHLAGEN (exit=%s), siehe %s\n" "$name" "$brc" "$LOG/build-$name.log" | tee -a "$SUM"
+    return 1
+  fi
   CUDA_VISIBLE_DEVICES=$2 "./$1/bin/test-backend-ops" -o MUL_MAT > "$LOG/test-$name.log" 2>&1
   local rc=$?
   # ANSI-Farbcodes entfernen, sonst zaehlt grep die OK-Zeilen nicht
@@ -59,7 +65,9 @@ test_ops() {  # $1 = Build-Ordner, $2 = GPU, $3 = Name
 
 bench() {  # $1 = Build-Ordner, $2 = GPU, $3 = Name
   [ -n "$MODEL" ] || return 0
-  cmake --build "$1" -j --target llama-bench > "$LOG/build-bench-$3.log" 2>&1
+  if ! cmake --build "$1" -j --target llama-bench > "$LOG/build-bench-$3.log" 2>&1; then
+    echo "llama-bench $3: BUILD FEHLGESCHLAGEN" | tee -a "$SUM"; return 1
+  fi
   CUDA_VISIBLE_DEVICES=$2 "./$1/bin/llama-bench" -m "$MODEL" -ngl 99 -r 5 > "$LOG/bench-$3.log" 2>&1
   echo "--- llama-bench $3 ---" | tee -a "$SUM"
   grep -E "^\|" "$LOG/bench-$3.log" | tee -a "$SUM"

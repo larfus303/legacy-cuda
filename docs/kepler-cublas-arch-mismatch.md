@@ -140,6 +140,8 @@ ggml rechnet dann genau diese Operation auf der CPU, alles andere bleibt auf der
 | Treiber | NVIDIA 470-Serie (getestet: 470.256.02), die letzte mit Kepler-Unterstützung |
 | CUDA Toolkit | 11.4 (Toolkit only, Treiber nicht überschreiben) |
 | Compiler | gcc/g++ 10 (CUDA 11.4 akzeptiert keinen neueren Host-Compiler) |
+
+**Wichtig:** `CC=gcc-10 CXX=g++-10` allein reicht nicht. nvcc muss zusätzlich ausdrücklich `-DCMAKE_CUDA_HOST_COMPILER=g++-10` bekommen. Sonst nimmt nvcc den System-Compiler, und auf neueren Systemen (z. B. glibc 2.39, Ubuntu 24.04) bricht der Build ab.
 | CMake | ≥ 3.18 |
 
 ### 5.2 llama.cpp bauen
@@ -154,6 +156,7 @@ git apply /pfad/zu/legacy-cuda/patches/ggml/0002-cuda-no-mmq-skip-noncont-quant-
 CC=gcc-10 CXX=g++-10 cmake -B build \
   -DGGML_CUDA=ON \
   -DCMAKE_CUDA_COMPILER=/usr/local/cuda-11.4/bin/nvcc \
+  -DCMAKE_CUDA_HOST_COMPILER=g++-10 \
   -DCMAKE_CUDA_ARCHITECTURES=37 \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
