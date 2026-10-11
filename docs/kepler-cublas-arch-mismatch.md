@@ -236,14 +236,30 @@ Zusatzlauf ohne Patch, nur `-p "type_a=q5_K"`: 63 bestanden, dann `CUBLAS_STATUS
 
 Auf der 3090 greift keiner der Patches. Die Bedingungen `cc < 500` (0001) und „kein MMQ“ (0002) sind dort nicht erfüllt, der Code-Pfad ist derselbe.
 
-**llama-bench auf der RTX 3090** (Mistral-7B Q4_K_M, `-ngl 99 -r 5`, zuerst ohne, dann mit Patch gemessen):
+**llama-bench auf der RTX 3090** (Mistral-7B Q4_K_M, `-ngl 99 -r 5`), zweimal in umgekehrter Reihenfolge gemessen:
 
-| Lauf | pp512 (t/s) | tg128 (t/s) |
+tg128 (t/s):
+
+| Messreihe | 1. Lauf | 2. Lauf |
 |---|---|---|
-| ohne Patch | 4557,33 ± 132,82 | 131,88 ± 0,65 |
-| 0001 + 0002 | 4501,30 ± 112,31 | 129,93 ± 0,66 |
+| A: ohne → mit | ohne 131,88 ± 0,65 | mit 129,93 ± 0,66 |
+| B: mit → ohne | mit 134,81 ± 0,34 | ohne 133,36 ± 0,60 |
 
-pp512 −1,2 % liegt klar im Rauschen. tg128 −1,5 % ist etwas größer als die Streuung einer einzelnen Messung. Da der ausgeführte Code auf der 3090 identisch ist, ist die wahrscheinlichste Erklärung die Messreihenfolge: Der zweite Lauf startet mit wärmerer Karte. Eine Wiederholung in umgekehrter Reihenfolge würde das bestätigen.
+pp512 (t/s):
+
+| Messreihe | 1. Lauf | 2. Lauf |
+|---|---|---|
+| A: ohne → mit | ohne 4557,33 ± 132,82 | mit 4501,30 ± 112,31 |
+| B: mit → ohne | mit 4549,26 ± 138,59 | ohne 4582,33 ± 120,20 |
+
+Mittelwert über beide Reihenfolgen:
+
+| | ohne Patch | mit 0001 + 0002 | Differenz |
+|---|---|---|---|
+| tg128 | 132,62 | 132,37 | −0,2 % |
+| pp512 | 4570 | 4525 | −1,0 % (Streuung ±120–140) |
+
+In beiden Messreihen ist der **zweite** Lauf rund 1 % langsamer, egal ob mit oder ohne Patch. Der Unterschied hängt also an der Reihenfolge (vermutlich leichte thermische Drosselung über die Laufzeit), nicht am Patch. Über beide Reihenfolgen gemittelt bleibt kein messbarer Effekt. Das passt zum Code: Auf der 3090 läuft derselbe Pfad wie ohne Patch.
 
 ### 6.2 Anwendung
 
