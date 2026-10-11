@@ -2,7 +2,7 @@
 
 **Betrifft:** Kepler-Karten (Compute Capability 3.x, z. B. Tesla K80 = sm_37, K40 = sm_35) mit ggml-basierten Programmen (whisper.cpp, llama.cpp und alles, was ggml einbettet). Fehler C (Abschnitt 2.4) betrifft vermutlich alle Karten unter CC 6.1, siehe dort.
 
-**Status:** Zwei Patches. Zusammen bestehen sie auf einer Tesla K80 alle 2423 `MUL_MAT`-Tests von `test-backend-ops`. whisper.cpp large-v3 läuft.
+**Status:** Zwei Patches. Zusammen bestehen sie auf einer Tesla K80 alle 2423 `MUL_MAT`-Tests von `test-backend-ops`. Auf einer RTX 3090 ändern sie nichts (2444/2444 mit und ohne Patch). whisper.cpp large-v3 läuft.
 
 | Patch | Behebt | Datei |
 |---|---|---|
@@ -215,7 +215,9 @@ Einstellungen über Umgebungsvariablen (Nummern wie in `nvidia-smi`, das Skript 
 
 ### 6.1 Gegenmessung `test-backend-ops -o MUL_MAT`
 
-Stand llama.cpp `23b0202`, Tesla K80 (eine GPU-Hälfte, `CUDA_VISIBLE_DEVICES=1`), Treiber 470.256.02, CUDA 11.4, gcc 10, `CMAKE_CUDA_ARCHITECTURES=37`. Gemessen am 2026-10-11.
+Stand llama.cpp `23b0202`, Treiber 470.256.02, CUDA 11.4, gcc 10, Skript `scripts/gegenmessung-k80.sh`. Gemessen am 2026-10-11 (Endfassung der Patches, 0001 mit Beschränkung auf `cc < 500`).
+
+**Tesla K80** (eine GPU-Hälfte, sm_37):
 
 | Lauf | Bestandene Tests | Abbruch | Exit |
 |---|---|---|---|
@@ -224,6 +226,24 @@ Stand llama.cpp `23b0202`, Tesla K80 (eine GPU-Hälfte, `CUDA_VISIBLE_DEVICES=1`
 | 0001 + 0002 | **2423 / 2423** | – | 0 |
 
 Zusatzlauf ohne Patch, nur `-p "type_a=q5_K"`: 63 bestanden, dann `CUBLAS_STATUS_ARCH_MISMATCH` aus `cublasGemmBatchedEx`. Das belegt, dass Fehler B auch quantisierte Typen betrifft.
+
+**RTX 3090** (sm_86), Gegenprobe auf neuerer Karte:
+
+| Lauf | Bestandene Tests | Exit |
+|---|---|---|
+| ohne Patch | 2444 / 2444 | 0 |
+| 0001 + 0002 | 2444 / 2444 | 0 |
+
+Auf der 3090 greift keiner der Patches. Die Bedingungen `cc < 500` (0001) und „kein MMQ“ (0002) sind dort nicht erfüllt, der Code-Pfad ist derselbe.
+
+**llama-bench auf der RTX 3090** (Mistral-7B Q4_K_M, `-ngl 99 -r 5`, zuerst ohne, dann mit Patch gemessen):
+
+| Lauf | pp512 (t/s) | tg128 (t/s) |
+|---|---|---|
+| ohne Patch | 4557,33 ± 132,82 | 131,88 ± 0,65 |
+| 0001 + 0002 | 4501,30 ± 112,31 | 129,93 ± 0,66 |
+
+pp512 −1,2 % liegt klar im Rauschen. tg128 −1,5 % ist etwas größer als die Streuung einer einzelnen Messung. Da der ausgeführte Code auf der 3090 identisch ist, ist die wahrscheinlichste Erklärung die Messreihenfolge: Der zweite Lauf startet mit wärmerer Karte. Eine Wiederholung in umgekehrter Reihenfolge würde das bestätigen.
 
 ### 6.2 Anwendung
 
