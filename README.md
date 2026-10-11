@@ -18,7 +18,7 @@ Das Ziel: Weniger Karten landen als Elektroschrott, weil sie sich einrichten las
 
 | Karte | Architektur | Compute Capability | Status in diesem Repo |
 |---|---|---|---|
-| Tesla K80 | Kepler (GK210) | 3.7 | in Arbeit, erster Patch vorhanden |
+| Tesla K80 | Kepler (GK210) | 3.7 | ggml-Patches getestet (2423/2423 MUL_MAT-Tests) |
 | Tesla M40 | Maxwell (GM200) | 5.2 | geplant |
 | Tesla P40 | Pascal (GP102) | 6.1 | geplant |
 | Tesla P100 | Pascal (GP100) | 6.0 | geplant |
@@ -30,24 +30,30 @@ Das Ziel: Weniger Karten landen als Elektroschrott, weil sie sich einrichten las
 
 | Thema | Betrifft | Dokument | Patch |
 |---|---|---|---|
-| `CUBLAS_STATUS_ARCH_MISMATCH` in whisper.cpp / llama.cpp | Kepler (K80, K40) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [patches/ggml/0001-cuda-kepler-avoid-cublas-ex.patch](patches/ggml/0001-cuda-kepler-avoid-cublas-ex.patch) |
+| `CUBLAS_STATUS_ARCH_MISMATCH` in whisper.cpp / llama.cpp | Kepler (K80, K40) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [0001](patches/ggml/0001-cuda-kepler-avoid-cublas-ex.patch) |
+| `GGML_ASSERT(convert_func != nullptr)` bei quantisierten Modellen | Karten unter CC 6.1 (K80 getestet; M40, P100 vermutlich) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [0002](patches/ggml/0002-cuda-no-mmq-skip-noncont-quant-without-nc-converter.patch) |
 
 ### Verzeichnisstruktur
 
 ```
 docs/       Anleitungen und Fehleranalysen, ein Dokument pro Thema
 patches/    Patches, nach Zielprojekt sortiert (z. B. patches/ggml/)
+scripts/    Mess- und Hilfsskripte
 ```
 
 ## Todo
 
 - [x] Kepler-Fix für `CUBLAS_STATUS_ARCH_MISMATCH` (ggml) mit Doku
+- [x] Fix für fehlende Umrechner bei quantisierten Modellen ohne MMQ (ggml)
+- [x] Gegenmessung mit `test-backend-ops` (ohne Patch / 0001 / 0001+0002)
 - [ ] Fix als Pull Request an ggml-org/llama.cpp einreichen
 - [ ] Treiberbank: getestete Treiber-/CUDA-/Compiler-Kombinationen je Karte
 - [ ] Installationshilfe für Einsteiger (vom leeren System bis zur ersten Inferenz)
 - [ ] Benchmark-Doku: eigene Messwerte, u. a. Tesla K80 gegen RTX 3090
 - [ ] Konzeptdatei: Ziele, Umfang und Aufbau des Projekts
 - [ ] Weitere Karten (M40, P40, P100, V100) aufnehmen
+- [ ] Fehler C auf M40 / P100 prüfen (vermutlich betroffen)
+- [ ] Mischbetrieb K80 + neuere Karte: Fehler `no device code compatible with CUDA arch 370` untersuchen
 
 ## Mitmachen
 
