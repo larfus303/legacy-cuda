@@ -1,15 +1,14 @@
 diff --git a/ggml/src/ggml-cuda/ggml-cuda.cu b/ggml/src/ggml-cuda/ggml-cuda.cu
-index e068116..b928101 100644
+index 957908f..b906225 100644
 --- a/ggml/src/ggml-cuda/ggml-cuda.cu
 +++ b/ggml/src/ggml-cuda/ggml-cuda.cu
-@@ -1561,6 +1561,19 @@ static void ggml_cuda_mul_mat_cublas_impl(ggml_backend_cuda_context & ctx, const
+@@ -1562,6 +1562,18 @@ static void ggml_cuda_mul_mat_cublas_impl(ggml_backend_cuda_context & ctx, const
          const int64_t smb = ne12 == 1 ? s13 : s12;
  
          // there is no broadcast and src0, src1 are contiguous across dims 2, 3
 +#if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
-+        // K80/Kepler fix: cublas*Ex is not supported below CC 5.0 (CUBLAS_STATUS_ARCH_MISMATCH),
-+        // so use the typed SGEMM API for F32 compute.
-+        if constexpr (compute_type == GGML_TYPE_F32) {
++        // cublas*Ex is not supported below CC 5.0 (Kepler), use typed SGEMM there
++        if (compute_type == GGML_TYPE_F32 && GGML_CUDA_CC_IS_NVIDIA(cc) && cc < 500) {
 +            CUBLAS_CHECK(
 +            cublasSgemmStridedBatched(cublas_h, CUBLAS_OP_T, CUBLAS_OP_N,
 +                    ne01, ne11, ne10,
@@ -22,13 +21,13 @@ index e068116..b928101 100644
          // use cublasGemmStridedBatchedEx
          CUBLAS_CHECK(
          cublasGemmStridedBatchedEx(cublas_h, CUBLAS_OP_T, CUBLAS_OP_N,
-@@ -1600,6 +1613,18 @@ static void ggml_cuda_mul_mat_cublas_impl(ggml_backend_cuda_context & ctx, const
+@@ -1601,6 +1613,18 @@ static void ggml_cuda_mul_mat_cublas_impl(ggml_backend_cuda_context & ctx, const
  
          CUDA_CHECK(cudaGetLastError());
  
 +#if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)
-+        // K80/Kepler fix: see above
-+        if constexpr (compute_type == GGML_TYPE_F32) {
++        // cublas*Ex is not supported below CC 5.0 (Kepler), use typed SGEMM there
++        if (compute_type == GGML_TYPE_F32 && GGML_CUDA_CC_IS_NVIDIA(cc) && cc < 500) {
 +            CUBLAS_CHECK(
 +            cublasSgemmBatched(cublas_h, CUBLAS_OP_T, CUBLAS_OP_N,
 +                    ne01, ne11, ne10,
@@ -41,12 +40,11 @@ index e068116..b928101 100644
          CUBLAS_CHECK(
          cublasGemmBatchedEx(cublas_h, CUBLAS_OP_T, CUBLAS_OP_N,
                  ne01, ne11, ne10,
-@@ -1658,6 +1683,12 @@ static void ggml_cuda_mul_mat_cublas(ggml_backend_cuda_context & ctx, const ggml
+@@ -1685,6 +1709,11 @@ static void ggml_cuda_mul_mat_cublas(ggml_backend_cuda_context & ctx, const ggml
          }
      }
  
-+    // K80/Kepler fix: every cublas*Ex call fails with CUBLAS_STATUS_ARCH_MISMATCH below CC 5.0,
-+    // so only the F32 path (cublasSgemm*) is usable there.
++    // cublas*Ex is not supported below CC 5.0 (Kepler), only the F32 path with typed SGEMM works there
 +    if (GGML_CUDA_CC_IS_NVIDIA(cc) && cc < 500) {
 +        compute_type = GGML_TYPE_F32;
 +    }

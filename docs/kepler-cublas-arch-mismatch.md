@@ -109,8 +109,10 @@ Welcher Pfad gewählt wird (ggml-eigener Kernel oder cuBLAS, einzeln oder batche
 Drei Änderungen in `ggml/src/ggml-cuda/ggml-cuda.cu`:
 
 1. **Rechentyp auf Kepler immer F32.** In `ggml_cuda_mul_mat_cublas` wird bei NVIDIA mit `cc < 500` `compute_type = GGML_TYPE_F32` gesetzt. Das übersteuert BF16-Gewichte und die Umgebungsvariable `GGML_CUDA_CUBLAS_COMPUTE_TYPE`. BF16/F16 werden vorher nach F32 umgerechnet, die einzelne Matrix läuft dann über `cublasSgemm` (behebt A).
-2. **Strided batched:** Bei F32 wird `cublasSgemmStridedBatched` statt `cublasGemmStridedBatchedEx` aufgerufen.
-3. **Pointer-batched:** Bei F32 wird `cublasSgemmBatched` statt `cublasGemmBatchedEx` aufgerufen.
+2. **Strided batched:** Bei F32 auf Kepler (`cc < 500`) wird `cublasSgemmStridedBatched` statt `cublasGemmStridedBatchedEx` aufgerufen.
+3. **Pointer-batched:** Bei F32 auf Kepler (`cc < 500`) wird `cublasSgemmBatched` statt `cublasGemmBatchedEx` aufgerufen.
+
+Alle drei Änderungen greifen **nur bei CC < 5.0**. Auf neueren Karten bleibt der Code-Pfad exakt wie vorher. (Eine erste Fassung hatte die Umschaltung in 2 und 3 für F32 auf allen Karten aktiv. Sie wurde auf Kepler beschränkt, damit neuere Karten nicht betroffen sind.)
 
 Punkte 2 und 3 beheben B. Die Rechnung ist mathematisch identisch (gleiche Matrizen, gleiche Strides, F32-Akkumulation). Die Punkte 2 und 3 stehen in `#if !defined(GGML_USE_HIP) && !defined(GGML_USE_MUSA)`, AMD- und Moore-Threads-Builds bleiben unberührt.
 
@@ -184,13 +186,27 @@ Jeder Treffer muss auf Kepler unerreichbar sein bzw. für F32 durch die `cublasS
 
 ### 5.5 Selbst nachmessen
 
-Das Skript [`scripts/gegenmessung-k80.sh`](../scripts/gegenmessung-k80.sh) baut `test-backend-ops` dreimal auf demselben Stand (ohne Patch, nur 0001, 0001+0002) und lässt jeweils alle `MUL_MAT`-Tests laufen. Danach setzt es den Quellcode wieder zurück.
+Das Skript [`scripts/gegenmessung-k80.sh`](../scripts/gegenmessung-k80.sh) misst in zwei Teilen:
+
+- **Teil 1, K80:** `test-backend-ops -o MUL_MAT` dreimal auf demselben Stand (ohne Patch, nur 0001, 0001+0002), Build für sm_37.
+- **Teil 2, neuere Karte** (z. B. RTX 3090): `test-backend-ops -o MUL_MAT` ohne Patch und mit 0001+0002, eigener Build für die neue Architektur. Wird ein Modell angegeben, läuft zusätzlich `llama-bench` mit und ohne Patch, um zu zeigen, dass sich die Geschwindigkeit nicht ändert.
+
+Am Ende setzt es den Quellcode wieder zurück. Das Ergebnis steht in `zusammenfassung.txt`.
 
 ```bash
-./scripts/gegenmessung-k80.sh /pfad/zu/llama.cpp patches/ggml
+./scripts/gegenmessung-k80.sh /pfad/zu/llama.cpp patches/ggml [/pfad/zu/modell.gguf]
 ```
 
-**Wichtig bei mehreren Karten im System:** Nur die K80 sichtbar machen (`CUDA_VISIBLE_DEVICES=<Nummer>`, das Skript setzt standardmäßig `1`). Sind gleichzeitig neuere Karten sichtbar (z. B. eine RTX 3090), bricht der Test mit `CUDA kernel … has no device code compatible with CUDA arch 370` ab. Das ist ein eigenes Problem, siehe Abschnitt 7.
+Einstellungen über Umgebungsvariablen (Nummern wie in `nvidia-smi`, das Skript setzt `CUDA_DEVICE_ORDER=PCI_BUS_ID`):
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `K80_GPU` | 1 | Nummer der K80 |
+| `NEW_GPU` | 0 | Nummer der neueren Karte |
+| `NEW_ARCH` | 86 | Architektur der neueren Karte (86 = RTX 30xx) |
+| `SKIP_K80` / `SKIP_NEW` | – | auf `1` setzen, um einen Teil zu überspringen |
+
+**Wichtig bei mehreren Karten im System:** Pro Lauf ist nur eine Karte sichtbar. Sind gleichzeitig neuere Karten sichtbar (z. B. eine RTX 3090), bricht der Test mit `CUDA kernel … has no device code compatible with CUDA arch 370` ab. Das ist ein eigenes Problem, siehe Abschnitt 7.
 
 ## 6. Testprotokoll
 
