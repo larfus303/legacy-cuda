@@ -234,6 +234,8 @@ Zusatzlauf ohne Patch, nur `-p "type_a=q5_K"`: 63 bestanden, dann `CUBLAS_STATUS
 | ohne Patch | 2444 / 2444 | 0 |
 | 0001 + 0002 | 2444 / 2444 | 0 |
 
+Die Differenz von 21 Tests (2444 gegenüber 2423) ist nachgezählt: Mit 0001+0002 meldet die K80 441 Fälle als „not supported“, die 3090 420. Die 21 zusätzlichen Fälle auf der K80 sind genau **q4_K, q5_K und q6_K** in einer nicht zusammenhängenden Ansicht (`m=1000, k=1024, k_v=1280`) mit `n` ∈ {2, 3, 5, 8, 9, 13, 16}, also 3 Typen × 7 Werte. Auf der 3090 rechnet MMQ diese Fälle, auf der K80 gibt 0002 sie an die CPU ab. IQ-Formate, TQ2_0 und MXFP4 tauchen in der Differenz nicht auf, weil sie in dieser Ansicht auf beiden Karten nicht unterstützt sind.
+
 Auf der 3090 greift keiner der Patches. Die Bedingungen `cc < 500` (0001) und „kein MMQ“ (0002) sind dort nicht erfüllt, der Code-Pfad ist derselbe.
 
 **llama-bench auf der RTX 3090** (Mistral-7B Q4_K_M, `-ngl 99 -r 5`), zweimal in umgekehrter Reihenfolge gemessen:
