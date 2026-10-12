@@ -274,23 +274,23 @@ Laufzeit whisper large-v3 (mit 0001), einzelne Messung:
 | System | Laufzeit | RTF | Encoder |
 |---|---|---|---|
 | Tesla K80, **eine** der beiden GPU-Hälften | 17,8 s | 0,58 | 5,07 s |
-| Xeon E5-2678v3 (Haswell, 2014, 12 Kerne / 24 Threads, AVX2, DDR4-2133), **12 Threads** | 55,3 s | 1,79 | 34,99 s |
+| Xeon E5-2699 v4 (Broadwell, 22 Kerne / 44 Threads, 2,2–3,6 GHz), **nur 12 Threads**, Governor `schedutil` | 55,3 s | 1,79 | 34,99 s |
 
-Die K80-Hälfte war in diesem Lauf etwa **3,1× schneller als dieser Xeon**.
+Die K80-Hälfte war in diesem Lauf etwa **3,1× schneller als dieser Xeon mit 12 Threads**. **Achtung:** Die CPU hat 22 Kerne, genutzt wurden nur 12. Mit allen Kernen wäre die CPU schneller und der Abstand zur K80 kleiner. Die Zahl 3,1× ist deshalb **kein fairer Vergleich mit der voll ausgelasteten CPU**.
 
 **Einordnung, damit die Zahl nicht falsch verstanden wird:**
 
-- Verglichen wurde eine bestimmte, ältere Server-CPU, keine CPU allgemein. Eine aktuelle Desktop-CPU (z. B. mit AVX-512 und DDR5) dürfte whisper deutlich schneller rechnen und kann die K80 überholen. Das ist nicht gemessen.
-- Es ist eine einzelne Messung. Nicht festgehalten wurden: ob der CPU-Build mit BLAS (z. B. OpenBLAS) gebaut war, welcher CPU-Takt-Governor aktiv war und ob andere Prozesse liefen. Der Lauf mit 24 Threads fehlt noch.
+- Verglichen wurde eine bestimmte, ältere Server-CPU mit nur einem Teil ihrer Kerne, keine CPU allgemein. Eine aktuelle Desktop-CPU (z. B. mit AVX-512 und DDR5) dürfte whisper deutlich schneller rechnen und kann die K80 überholen. Das ist nicht gemessen.
+- Es ist eine einzelne Messung. Nicht festgehalten wurden: ob der CPU-Build mit BLAS (z. B. OpenBLAS) gebaut war, welcher CPU-Takt-Governor aktiv war und ob andere Prozesse liefen. Läufe mit allen 22 Kernen bzw. 44 Threads fehlen noch.
 - Auf der K80 lief nur eine der beiden GPU-Hälften. Für einen einzelnen whisper-Auftrag spielt das kaum eine Rolle, weil er nicht auf zwei GPUs verteilt wird.
 
-Eine belastbarere Vergleichsmessung (Governor `performance`, CPU mit 12 und 24 Threads, BLAS-Angabe, je drei Läufe gemittelt) steht in den offenen Punkten.
+Eine belastbarere Vergleichsmessung (Governor `performance`, CPU mit 22 und 44 Threads, BLAS-Angabe, je drei Läufe gemittelt) steht in den offenen Punkten.
 
 ## 7. Offene Punkte
 
 - **Mehrere GPUs gemischter Generation:** Mit RTX 3090 und K80 gleichzeitig sichtbar kommt `CUDA kernel mul_mat_vec_f has no device code compatible with CUDA arch 370. ggml-cuda.cu was compiled for: __CUDA_ARCH_LIST__`. Dass dort wörtlich `__CUDA_ARCH_LIST__` steht statt einer Architekturliste, deutet darauf hin, dass CUDA 11.4 dieses Makro noch nicht kennt (es kam mit CUDA 11.5). Noch nicht untersucht.
 - **Fehler C auf M40 und P100:** vermutlich ebenfalls betroffen, ungetestet.
-- **whisper-Vergleich K80 gegen CPU wiederholen:** Governor `performance`, CPU mit 12 und 24 Threads, BLAS-Build angeben, je drei Läufe mitteln (siehe Abschnitt 6.2).
+- **whisper-Vergleich K80 gegen CPU wiederholen:** Governor `performance`, CPU mit 22 und 44 Threads, BLAS-Build angeben, je drei Läufe mitteln (siehe Abschnitt 6.2).
 - **Upstream:** eingereicht als Pull Request [ggml-org/llama.cpp#30338](https://github.com/ggml-org/llama.cpp/pull/30338) (2026-10-11).
 
 ## 8. Quellen
