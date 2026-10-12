@@ -269,28 +269,50 @@ In beiden Messreihen ist der **zweite** Lauf rund 1 % langsamer, egal ob mit ode
 |---|---|---|---|---|
 | 2026-10-10 | Tesla K80 | whisper.cpp `d1be6fd` + 0001 | large-v3 | ✅ läuft |
 
-Laufzeit whisper large-v3 (mit 0001), einzelne Messung:
+#### Faire Vergleichsmessung (2026-10-12) – maßgeblich
+
+whisper large-v3 (mit 0001), Audiodatei 30,8 s, je **drei Läufe gemittelt**, CPU-Takt-Governor `performance`:
+
+| System | Gesamt | Encoder | Rest (Gesamt − Encoder) | RTF |
+|---|---|---|---|---|
+| Tesla K80, **eine** der beiden GPU-Hälften | **10,42 s** | 3,46 s | 6,96 s | 0,34 |
+| Xeon E5-2699 v4, **22 Threads** (alle physischen Kerne) | 17,55 s | 13,23 s | 4,32 s | 0,57 |
+| Xeon E5-2699 v4, 44 Threads (mit Hyperthreading) | 16,63 s | 12,68 s | 3,95 s | 0,54 |
+
+**Ergebnis:**
+
+- **Gesamt ist die K80-Hälfte etwa 1,7× schneller** als dieser Xeon mit allen Kernen (17,55 s / 10,42 s = 1,68×; gegen 44 Threads 1,60×).
+- **Der Encoder läuft auf der K80 etwa 3,8× schneller** (13,23 s / 3,46 s). Hier liegt der eigentliche Gewinn der Karte.
+- **Der Rest (Decoder, Audio-Verarbeitung, Datentransfer) ist auf der K80-Variante langsamer** als auf der reinen CPU (6,96 s gegen 4,32 s). Das verwässert den Encoder-Gewinn auf 1,7× gesamt. Warum, ist nicht untersucht. Plausibel sind die tokenweise Decodierung mit vielen kleinen Kernel-Aufrufen und die PCIe-Transfers auf der alten Karte.
+- **Hyperthreading bringt kaum etwas:** 44 statt 22 Threads sind nur rund 5 % schneller.
+
+#### Korrektur der ersten Messung (2026-10-10) – überholt
+
+Die erste Messung wird hier nur zur Nachvollziehbarkeit aufgeführt. **Die dort genannten 3,1× sind kein gültiger Vergleich K80 gegen CPU.**
 
 | System | Laufzeit | RTF | Encoder |
 |---|---|---|---|
-| Tesla K80, **eine** der beiden GPU-Hälften | 17,8 s | 0,58 | 5,07 s |
-| Xeon E5-2699 v4 (Broadwell, 22 Kerne / 44 Threads, 2,2–3,6 GHz), **nur 12 Threads**, Governor `schedutil` | 55,3 s | 1,79 | 34,99 s |
+| Tesla K80, eine GPU-Hälfte | 17,8 s | 0,58 | 5,07 s |
+| Xeon E5-2699 v4, **nur 12 Threads**, Governor `schedutil` | 55,3 s | 1,79 | 34,99 s |
 
-Die K80-Hälfte war in diesem Lauf etwa **3,1× schneller als dieser Xeon mit 12 Threads**. **Achtung:** Die CPU hat 22 Kerne, genutzt wurden nur 12. Mit allen Kernen wäre die CPU schneller und der Abstand zur K80 kleiner. Die Zahl 3,1× ist deshalb **kein fairer Vergleich mit der voll ausgelasteten CPU**.
+Die Messung war in zwei Richtungen verzerrt:
 
-**Einordnung, damit die Zahl nicht falsch verstanden wird:**
+1. **Die CPU lief nur mit 12 von 22 Kernen** und zusätzlich unter dem drosselnden Governor `schedutil`. Ihr Wert war dadurch viel zu schlecht (55,3 s statt 17,55 s).
+2. **Auch der K80-Wert war zu schlecht** (17,8 s statt 10,42 s). Die CPU-seitigen Anteile des K80-Laufs (Decoder, Audio, Transfers) wurden ebenfalls gedrosselt. Dass der Unterschied überwiegend vom Governor kommt, ist wahrscheinlich, aber nicht isoliert gemessen. Andere Bedingungen am 10.10. (z. B. weitere laufende Prozesse) sind nicht ausgeschlossen.
 
-- Verglichen wurde eine bestimmte, ältere Server-CPU mit nur einem Teil ihrer Kerne, keine CPU allgemein. Eine aktuelle Desktop-CPU (z. B. mit AVX-512 und DDR5) dürfte whisper deutlich schneller rechnen und kann die K80 überholen. Das ist nicht gemessen.
-- Es ist eine einzelne Messung. Nicht festgehalten wurden: ob der CPU-Build mit BLAS (z. B. OpenBLAS) gebaut war, welcher CPU-Takt-Governor aktiv war und ob andere Prozesse liefen. Läufe mit allen 22 Kernen bzw. 44 Threads fehlen noch.
+**Einordnung, damit die Zahlen nicht falsch verstanden werden:**
+
+- Verglichen wurde eine bestimmte, ältere Server-CPU (Broadwell, AVX2, ohne AVX-512), keine CPU allgemein. Eine aktuelle Desktop-CPU (z. B. mit AVX-512 und DDR5) dürfte whisper deutlich schneller rechnen und kann die K80 überholen. Das ist nicht gemessen.
+- Die Audiodatei ist kurz (30,8 s). Feste Kosten wie Laden und Initialisierung haben deshalb einen großen Anteil. Mit einer längeren Aufnahme kann sich das Verhältnis verschieben.
+- Ob der CPU-Build mit BLAS (z. B. OpenBLAS) gebaut war, ist weiterhin nicht festgehalten.
 - Auf der K80 lief nur eine der beiden GPU-Hälften. Für einen einzelnen whisper-Auftrag spielt das kaum eine Rolle, weil er nicht auf zwei GPUs verteilt wird.
-
-Eine belastbarere Vergleichsmessung (Governor `performance`, CPU mit 22 und 44 Threads, BLAS-Angabe, je drei Läufe gemittelt) steht in den offenen Punkten.
+- **Für eigene Vergleiche:** Governor auf `performance` stellen (und danach zurück), alle physischen Kerne nutzen, mehrere Läufe mitteln. Sonst wird nicht nur die CPU, sondern auch eine GPU-Messung verfälscht, weil auch sie CPU-Anteile hat.
 
 ## 7. Offene Punkte
 
 - **Mehrere GPUs gemischter Generation:** Mit RTX 3090 und K80 gleichzeitig sichtbar kommt `CUDA kernel mul_mat_vec_f has no device code compatible with CUDA arch 370. ggml-cuda.cu was compiled for: __CUDA_ARCH_LIST__`. Dass dort wörtlich `__CUDA_ARCH_LIST__` steht statt einer Architekturliste, deutet darauf hin, dass CUDA 11.4 dieses Makro noch nicht kennt (es kam mit CUDA 11.5). Noch nicht untersucht.
 - **Fehler C auf M40 und P100:** vermutlich ebenfalls betroffen, ungetestet.
-- **whisper-Vergleich K80 gegen CPU wiederholen:** Governor `performance`, CPU mit 22 und 44 Threads, BLAS-Build angeben, je drei Läufe mitteln (siehe Abschnitt 6.2).
+- **whisper K80 gegen CPU, Restpunkte:** faire Messung erledigt (Abschnitt 6.2). Offen sind noch: BLAS-Angabe des CPU-Builds, eine längere Audiodatei, der isolierte Governor-Effekt auf den K80-Lauf und die Ursache, warum der Nicht-Encoder-Anteil auf der K80-Variante langsamer ist als auf der CPU.
 - **Upstream:** eingereicht als Pull Request [ggml-org/llama.cpp#30338](https://github.com/ggml-org/llama.cpp/pull/30338) (2026-10-11).
 
 ## 8. Quellen
