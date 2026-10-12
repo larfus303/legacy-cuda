@@ -269,12 +269,28 @@ In beiden Messreihen ist der **zweite** Lauf rund 1 % langsamer, egal ob mit ode
 |---|---|---|---|---|
 | 2026-10-10 | Tesla K80 | whisper.cpp `d1be6fd` + 0001 | large-v3 | ✅ läuft |
 
-Laufzeit whisper large-v3 (mit 0001): **17,8 s** auf der K80 (RTF 0,58, Encoder 5,07 s) gegenüber **55,3 s** auf der CPU mit 12 Threads (RTF 1,79, Encoder 34,99 s). Die K80 ist damit etwa **3,1× schneller**.
+Laufzeit whisper large-v3 (mit 0001), einzelne Messung:
+
+| System | Laufzeit | RTF | Encoder |
+|---|---|---|---|
+| Tesla K80, **eine** der beiden GPU-Hälften | 17,8 s | 0,58 | 5,07 s |
+| Xeon E5-2678v3 (Haswell, 2014, 12 Kerne / 24 Threads, AVX2, DDR4-2133), **12 Threads** | 55,3 s | 1,79 | 34,99 s |
+
+Die K80-Hälfte war in diesem Lauf etwa **3,1× schneller als dieser Xeon**.
+
+**Einordnung, damit die Zahl nicht falsch verstanden wird:**
+
+- Verglichen wurde eine bestimmte, ältere Server-CPU, keine CPU allgemein. Eine aktuelle Desktop-CPU (z. B. mit AVX-512 und DDR5) dürfte whisper deutlich schneller rechnen und kann die K80 überholen. Das ist nicht gemessen.
+- Es ist eine einzelne Messung. Nicht festgehalten wurden: ob der CPU-Build mit BLAS (z. B. OpenBLAS) gebaut war, welcher CPU-Takt-Governor aktiv war und ob andere Prozesse liefen. Der Lauf mit 24 Threads fehlt noch.
+- Auf der K80 lief nur eine der beiden GPU-Hälften. Für einen einzelnen whisper-Auftrag spielt das kaum eine Rolle, weil er nicht auf zwei GPUs verteilt wird.
+
+Eine belastbarere Vergleichsmessung (Governor `performance`, CPU mit 12 und 24 Threads, BLAS-Angabe, je drei Läufe gemittelt) steht in den offenen Punkten.
 
 ## 7. Offene Punkte
 
 - **Mehrere GPUs gemischter Generation:** Mit RTX 3090 und K80 gleichzeitig sichtbar kommt `CUDA kernel mul_mat_vec_f has no device code compatible with CUDA arch 370. ggml-cuda.cu was compiled for: __CUDA_ARCH_LIST__`. Dass dort wörtlich `__CUDA_ARCH_LIST__` steht statt einer Architekturliste, deutet darauf hin, dass CUDA 11.4 dieses Makro noch nicht kennt (es kam mit CUDA 11.5). Noch nicht untersucht.
 - **Fehler C auf M40 und P100:** vermutlich ebenfalls betroffen, ungetestet.
+- **whisper-Vergleich K80 gegen CPU wiederholen:** Governor `performance`, CPU mit 12 und 24 Threads, BLAS-Build angeben, je drei Läufe mitteln (siehe Abschnitt 6.2).
 - **Upstream:** eingereicht als Pull Request [ggml-org/llama.cpp#30338](https://github.com/ggml-org/llama.cpp/pull/30338) (2026-10-11).
 
 ## 8. Quellen
