@@ -1,22 +1,26 @@
 #!/usr/bin/env bash
-# Gegenmessung der ggml-Kepler-Patches 0001/0002
+# Gegenmessung des ggml-Kepler-Patches (v2, PR #30338)
 #
 # Aufruf:
-#   ./gegenmessung-k80.sh <llama.cpp-Verzeichnis> <Ordner mit 0001-/0002-Patch> [Modell.gguf]
+#   ./gegenmessung-k80.sh <llama.cpp-Verzeichnis> <Patch-Datei> [Modell.gguf]
 #
-# Teil 1 - Tesla K80 (Korrektheit), drei Laeufe auf demselben Stand:
-#   ohne Patch, nur 0001, 0001+0002
-# Teil 2 - neuere Karte, z. B. RTX 3090 (keine Regression):
-#   test-backend-ops ohne Patch und mit 0001+0002,
-#   optional llama-bench mit/ohne Patch, wenn ein Modell angegeben ist
+#   llama.cpp-Verzeichnis: sauberer Stand, auf den der Patch passt (getestet: 23b0202)
+#   Patch-Datei:           z. B. patches/ggml/cuda-kepler-mul-mat-v2.patch
+#   Modell.gguf:           optional, dann zusaetzlich llama-bench mit/ohne Patch
+#                          (fuer die K80 ein K-Quant-Modell nehmen, z. B. Q4_K_M)
+#
+# Teil 1 - Tesla K80 (eine GPU-Haelfte):  ohne Patch / mit Patch
+# Teil 2 - neuere Karte, z. B. RTX 3090:  ohne Patch / mit Patch
+# Jeweils test-backend-ops -o MUL_MAT, optional llama-bench.
 #
 # Umgebungsvariablen (Nummern wie in nvidia-smi):
-#   K80_GPU=1   NEW_GPU=0   NEW_ARCH=86   SKIP_K80=1   SKIP_NEW=1
+#   K80_GPU=2   NEW_GPU=0   NEW_ARCH=86   SKIP_K80=1   SKIP_NEW=1
+# K80_GPU: die kuehlere, nicht gedrosselte GPU-Haelfte nehmen
+#   (nvidia-smi --query-gpu=index,name,temperature.gpu,power.limit --format=csv)
 set -u
-SRC=$(realpath "$1"); PD=$(realpath "$2"); MODEL=${3:-}
-P1="$PD/0001-cuda-kepler-avoid-cublas-ex.patch"
-P2="$PD/0002-cuda-no-mmq-skip-noncont-quant-without-nc-converter.patch"
-K80_GPU=${K80_GPU:-1}; NEW_GPU=${NEW_GPU:-0}; NEW_ARCH=${NEW_ARCH:-86}
+SRC=$(realpath "$1"); PATCH=$(realpath "$2"); MODEL=${3:-}
+[ -n "$MODEL" ] && MODEL=$(realpath "$MODEL")
+K80_GPU=${K80_GPU:-2}; NEW_GPU=${NEW_GPU:-0}; NEW_ARCH=${NEW_ARCH:-86}
 LOG="$PWD/gegenmessung-$(date +%Y%m%d-%H%M)"; mkdir -p "$LOG"
 SUM="$LOG/zusammenfassung.txt"
 
@@ -24,10 +28,10 @@ SUM="$LOG/zusammenfassung.txt"
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
 
 cd "$SRC"
-F=ggml/src/ggml-cuda/ggml-cuda.cu
-git checkout -- "$F"
-echo "llama.cpp $(git rev-parse --short HEAD), $(date '+%F %T')" | tee "$SUM"
-nvidia-smi --query-gpu=index,name,driver_version,memory.used --format=csv,noheader >> "$SUM"
+D=ggml/src/ggml-cuda
+git checkout -- "$D"
+echo "llama.cpp $(git rev-parse --short HEAD), Patch $(basename "$PATCH"), $(date '+%F %T')" | tee "$SUM"
+nvidia-smi --query-gpu=index,name,driver_version,temperature.gpu,power.limit --format=csv,noheader >> "$SUM"
 
 configure() {  # $1 = Build-Ordner, $2 = CUDA-Architektur
   [ -d "$1" ] || CC=gcc-10 CXX=g++-10 cmake -B "$1" -DGGML_CUDA=ON \
@@ -36,12 +40,9 @@ configure() {  # $1 = Build-Ordner, $2 = CUDA-Architektur
     -DCMAKE_CUDA_ARCHITECTURES="$2" -DCMAKE_BUILD_TYPE=Release > "$LOG/cmake-$1.log" 2>&1
 }
 
-set_patch() {  # $1 = none | 0001 | all
-  git checkout -- "$F"
-  case "$1" in
-    0001) git apply "$P1" ;;
-    all)  git apply "$P1" && git apply "$P2" ;;
-  esac
+set_patch() {  # $1 = none | v2
+  git checkout -- "$D"
+  [ "$1" = v2 ] && git apply "$PATCH"
 }
 
 test_ops() {  # $1 = Build-Ordner, $2 = GPU, $3 = Name
@@ -76,17 +77,17 @@ bench() {  # $1 = Build-Ordner, $2 = GPU, $3 = Name
 if [ -z "${SKIP_K80:-}" ]; then
   echo "=== Tesla K80 (GPU $K80_GPU, sm_37) ===" | tee -a "$SUM"
   configure build-k80 37
-  set_patch none; test_ops build-k80 "$K80_GPU" k80-ohne-patch
-  set_patch 0001; test_ops build-k80 "$K80_GPU" k80-nur-0001
-  set_patch all;  test_ops build-k80 "$K80_GPU" k80-0001+0002
+  # ohne Patch bricht test-backend-ops auf der K80 ab, llama-bench kann ebenfalls abbrechen
+  set_patch none; test_ops build-k80 "$K80_GPU" k80-ohne-patch; bench build-k80 "$K80_GPU" k80-ohne-patch
+  set_patch v2;   test_ops build-k80 "$K80_GPU" k80-v2;         bench build-k80 "$K80_GPU" k80-v2
 fi
 
 if [ -z "${SKIP_NEW:-}" ]; then
   echo "=== Neuere Karte (GPU $NEW_GPU, sm_$NEW_ARCH) ===" | tee -a "$SUM"
   configure build-new "$NEW_ARCH"
   set_patch none; test_ops build-new "$NEW_GPU" new-ohne-patch; bench build-new "$NEW_GPU" new-ohne-patch
-  set_patch all;  test_ops build-new "$NEW_GPU" new-0001+0002;  bench build-new "$NEW_GPU" new-0001+0002
+  set_patch v2;   test_ops build-new "$NEW_GPU" new-v2;         bench build-new "$NEW_GPU" new-v2
 fi
 
-git checkout -- "$F"   # Stand wieder sauber
+git checkout -- "$D"   # Stand wieder sauber
 echo "Logs: $LOG"

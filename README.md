@@ -18,7 +18,7 @@ Das Ziel: Weniger Karten landen als Elektroschrott, weil sie sich einrichten las
 
 | Karte | Architektur | Compute Capability | Status in diesem Repo |
 |---|---|---|---|
-| Tesla K80 | Kepler (GK210) | 3.7 | ggml-Patches getestet (2423/2423 MUL_MAT-Tests) |
+| Tesla K80 | Kepler (GK210) | 3.7 | ggml-Patch v2 getestet: alle 18 477 Tests von `test-backend-ops` bestanden, wie auf der RTX 3090 |
 | Tesla M40 | Maxwell (GM200) | 5.2 | geplant |
 | Tesla P40 | Pascal (GP102) | 6.1 | geplant |
 | Tesla P100 | Pascal (GP100) | 6.0 | geplant |
@@ -30,8 +30,13 @@ Das Ziel: Weniger Karten landen als Elektroschrott, weil sie sich einrichten las
 
 | Thema | Betrifft | Dokument | Patch |
 |---|---|---|---|
-| `CUBLAS_STATUS_ARCH_MISMATCH` in whisper.cpp / llama.cpp | Kepler (K80, K40) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [0001](patches/ggml/0001-cuda-kepler-avoid-cublas-ex.patch) |
-| `GGML_ASSERT(convert_func != nullptr)` bei quantisierten Modellen | Karten unter CC 6.1 (K80 getestet; M40, P100 vermutlich) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [0002](patches/ggml/0002-cuda-no-mmq-skip-noncont-quant-without-nc-converter.patch) |
+| `CUBLAS_STATUS_ARCH_MISMATCH` in whisper.cpp / llama.cpp | Kepler (K80, K40) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [v2](patches/ggml/cuda-kepler-mul-mat-v2.patch) |
+| `GGML_ASSERT(convert_func != nullptr)` bei quantisierten Modellen | Karten unter CC 6.1 (K80 getestet; M40, P100 vermutlich) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [v2](patches/ggml/cuda-kepler-mul-mat-v2.patch) |
+| K80 und neuere Karte in einem Programm (`no kernel image` / `no device code compatible with CUDA arch 370`) | Mischbetrieb, z. B. K80 + RTX 3090 | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md), Abschnitt 6.6 | Build-Einstellung `-DCMAKE_CUDA_ARCHITECTURES="37;86"` |
+
+Der Patch v2 entspricht dem Stand des Pull Requests nach der ersten Review-Runde. Die älteren Patches 0001/0002 (Fassung 1) liegen in [`patches/ggml/v1/`](patches/ggml/v1/).
+
+**Betriebstipp K80:** In llama.cpp `-fa 1` (Flash Attention) setzen, das macht die Generation rund 4 % schneller. `-ub` nicht unter 512 setzen. Messwerte im Dokument, Abschnitt 6.5.
 
 ### Verzeichnisstruktur
 
@@ -47,13 +52,18 @@ scripts/    Mess- und Hilfsskripte
 - [x] Fix für fehlende Umrechner bei quantisierten Modellen ohne MMQ (ggml)
 - [x] Gegenmessung mit `test-backend-ops` (ohne Patch / 0001 / 0001+0002)
 - [x] Fix als Pull Request an ggml-org/llama.cpp eingereicht: [#30338](https://github.com/ggml-org/llama.cpp/pull/30338)
+- [x] Review-Runde 1 umgesetzt (Patch v2), K80 und 3090 je 2444/2444 MUL_MAT, Prefill wie vorher
+- [x] Alle Operationen auf der K80 geprüft: 18 477/18 477, keine Kepler-spezifischen Lücken
+- [ ] Antwort des Reviewers auf v2 abwarten
+- [ ] Voller `test-backend-ops`-Lauf mit dem Endstand `6b3b848`
+- [ ] whisper mit Patch v2 messen
 - [ ] Treiberbank: getestete Treiber-/CUDA-/Compiler-Kombinationen je Karte
 - [ ] Installationshilfe für Einsteiger (vom leeren System bis zur ersten Inferenz)
 - [ ] Benchmark-Doku: eigene Messwerte, u. a. Tesla K80 gegen RTX 3090
 - [ ] Konzeptdatei: Ziele, Umfang und Aufbau des Projekts
 - [ ] Weitere Karten (M40, P40, P100, V100) aufnehmen
 - [ ] Fehler C auf M40 / P100 prüfen (vermutlich betroffen)
-- [ ] Mischbetrieb K80 + neuere Karte: Fehler `no device code compatible with CUDA arch 370` untersuchen
+- [ ] Mischbetrieb K80 + neuere Karte: Build `37;86` erkennt alle Karten, vollständiger Lauf über beide Karten steht aus
 
 ## Mitmachen
 
