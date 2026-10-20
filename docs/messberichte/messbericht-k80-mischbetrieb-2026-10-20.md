@@ -101,7 +101,7 @@ ggml_cuda_init: found 2 CUDA devices (Total VRAM: 35707 MiB):
 
 ## 5. Vollständiger Vergleich (Mistral-7B Q4_K_M)
 
-Alle Werte gleicher Build, gleiche Flags, gleicher Tag:
+Alle Werte gleicher Build, gleicher Tag; die GPU-Läufe mit denselben Flags (`-ngl 99 -fa 1 -ub 512 -r 3`), der CPU-Lauf mit `CUDA_VISIBLE_DEVICES=` (leer) und `-ngl 0 -t 22 -r 3` (Details in §1):
 
 | Konfiguration | pp512 (t/s) | tg128 (t/s) |
 |---|---:|---:|
