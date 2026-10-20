@@ -485,22 +485,82 @@ grep "not supported" alle-ops-k80.log | cut -d'(' -f1 | sort | uniq -c | sort -r
 
 ### 6.6 Mischbetrieb K80 + RTX 3090
 
-Gemessen am 2026-10-19, Code-Stand `e0641ca`:
+Gemessen am 2026-10-19 und 2026-10-20 von Max auf „bodo“. Ausführlicher Messbericht mit allen Erklärungen: [`messberichte/messbericht-k80-mischbetrieb-2026-10-20.md`](messberichte/messbericht-k80-mischbetrieb-2026-10-20.md).
 
-| Build | Ergebnis |
+**Build:** ein einziges Binary für beide Architekturen, `-DCMAKE_CUDA_ARCHITECTURES="37;86"`, `GGML_CUDA=ON`, `GGML_CUDA_FA=ON`, Code-Stand `6b3b848`. Der Mischbuild braucht dieselben drei Angaben wie jeder K80-Build: `CMAKE_CUDA_COMPILER` mit Pfad zu nvcc 11.4, `CMAKE_CUDA_HOST_COMPILER` gcc/g++ 10 und beide Architekturen. CUDA 11.4 akzeptiert die Kombination `37;86`.
+
+**Gegenprobe:** Ein Build nur für sm_86, gestartet auf der K80, bricht ab mit `CUDA error: no kernel image is available for execution on the device`. Das ist das Muster des ursprünglichen Fehlers (Abschnitt 7): Für die K80 fehlt im Binary der passende Code.
+
+**Modell und Optionen:** Mistral-7B-Instruct-v0.3 Q4_K_M (4,07 GiB), `-ngl 99 -fa 1 -ub 512 -r 3`.
+
+**1. Das Mischbinary auf den einzelnen K80-Hälften:**
+
+| Stand | Gerät | pp512 (t/s) | tg128 (t/s) |
+|---|---|---|---|
+| `e0641ca` (vor dem Fix) | K80-A (110 W) | 38,95 ± 0,20 | 8,86 ± 0,02 |
+| `6b3b848` | K80-A (110 W) | 101,93 ± 0,77 | 8,96 ± 0,01 |
+| `6b3b848` | K80-B (175 W) | 140,96 ± 0,14 | 12,17 ± 0,08 |
+
+Der Fix wirkt auch im Mischbinary. K80-B liegt auf dem Niveau der Messung aus Abschnitt 6.3 (140,16 t/s, Differenz 0,6 %). Der Wert 38,95 t/s vor dem Fix wurde auf K80-A gemessen, die Regression in 6.3 (42,8 t/s) auf K80-B. Beides passt zusammen, die Hälften sind wegen der unterschiedlichen Leistungsgrenze aber nicht direkt vergleichbar. Der Unterschied zwischen K80-A und K80-B kommt von der Leistungsgrenze, nicht vom Patch.
+
+**2. 3090 und K80-B gemeinsam** (`CUDA_VISIBLE_DEVICES=0,2`, Layer-Split `-sm layer`):
+
+```
+ggml_cuda_init: found 2 CUDA devices (Total VRAM: 35707 MiB):
+  Device 0: RTX 3090, CC 8.6, VRAM 24266 MiB
+  Device 1: K80, CC 3.7, VRAM 11441 MiB
+```
+
+| pp512 (t/s) | tg128 (t/s) |
 |---|---|
-| nur sm_86, gestartet auf der K80 | Abbruch: `CUDA error: no kernel image is available for execution on the device` |
-| `-DCMAKE_CUDA_ARCHITECTURES="37;86"` | erkennt alle drei Geräte (3090 mit CC 8.6, beide K80-Hälften mit CC 3.7), `test-backend-ops` startet auf der 3090 ohne Fehler |
+| 490,00 ± 2,48 | 35,17 ± 0,05 |
 
-Der Mischbuild braucht dieselben drei Angaben wie jeder K80-Build: `CMAKE_CUDA_COMPILER` mit Pfad zu nvcc 11.4, `CMAKE_CUDA_HOST_COMPILER` gcc/g++ 10 und beide Architekturen. CUDA 11.4 akzeptiert die Kombination `37;86`.
+Beide Architekturen rechnen gleichzeitig in einem Programm, ohne Fehler. Schneller als die 3090 allein (135 t/s Generation) ist das nicht: Beim Layer-Split rechnet jede Karte ihre Schichten nacheinander, die langsame K80 bestimmt die Gesamtzeit mit.
 
-Dokumentiert ist nur der Start des Tests auf der 3090, kein vollständiger Lauf über alle drei Geräte und kein Modell, das auf 3090 und K80 gemeinsam läuft. Ob die ursprüngliche Fehlermeldung `has no device code compatible with CUDA arch 370 … compiled for: __CUDA_ARCH_LIST__` (Abschnitt 7) genau diese Ursache hatte, ist wahrscheinlich, aber nicht mit demselben Binary nachgestellt.
+**3. Rechnet der Mischbetrieb richtig?** `llama-perplexity`, WikiText-2 Test-Set, `-c 512`, `-sm layer`:
+
+| Lauf | Perplexity |
+|---|---|
+| nur 3090 | 6,2250 ± 0,03760 |
+| 3090 + K80-B | 6,2249 ± 0,03760 |
+
+Die Differenz von 0,0001 liegt weit innerhalb der Messunsicherheit von ±0,038. Der Mischbetrieb rechnet praktisch identisch zum Lauf auf einer Karte. Der Lauf dauerte im Mischbetrieb etwa 37 Minuten, nur auf der 3090 etwa 1,5 Minuten.
+
+**4. Ein Modell, das auf keine einzelne Karte passt:** Dolphin-2.9.1-Llama-3-70B Q4_K_M (39,59 GiB) über alle drei GPUs (`CUDA_VISIBLE_DEVICES=0,1,2`, `-sm layer`, `-r 1`, ohne Streuungsangabe):
+
+| Konfiguration | pp512 (t/s) | tg128 (t/s) |
+|---|---|---|
+| 3090 + K80-A + K80-B | 19,22 | 2,45 |
+| nur CPU (22 Threads, ohne sichtbare GPU, Messmethode wie in 6.7) | 8,27 | 1,58 |
+
+Das Modell ist zu groß für die 24 GiB der 3090, passt aber in die rund 46 GiB aller drei GPUs. Der Split ist beim Prefill 2,3× und bei der Generation 1,55× schneller als die CPU. K80-A lief dabei gedrosselt mit 110 W.
+
+**Ergebnis:** Der Mischbetrieb funktioniert und rechnet korrekt. Für Modelle, die auf die 3090 allein passen, bremst er sie aber nur aus. Sinnvoll ist er für Modelle, die nur mit dem Speicher aller Karten zusammen auf die GPUs passen. Sonst ist es besser, die Karten getrennt zu nutzen: das Hauptmodell auf der 3090, Nebenaufgaben auf der K80.
+
+### 6.7 LLM-Inferenz: K80 gegen CPU und RTX 3090
+
+Mistral-7B-Instruct-v0.3 Q4_K_M, Mischbuild `6b3b848`, gemessen am 2026-10-20. GPU-Läufe mit `-ngl 99 -fa 1 -ub 512 -r 3`, CPU-Lauf mit `CUDA_VISIBLE_DEVICES=` (leer) und `-ngl 0 -t 22 -r 3`:
+
+| Konfiguration | pp512 (t/s) | tg128 (t/s) |
+|---|---|---|
+| RTX 3090 allein | 4466,67 ± 312,75 | 135,01 ± 0,34 |
+| 3090 + K80-B (Layer-Split) | 490,00 ± 2,48 | 35,17 ± 0,05 |
+| K80-B (175 W) allein | 140,96 ± 0,14 | 12,17 ± 0,08 |
+| K80-A (110 W) allein | 101,93 ± 0,77 | 8,96 ± 0,01 |
+| CPU, Xeon E5-2699 v4, 22 Threads | 80,05 ± 0,42 | 14,40 ± 0,06 |
+
+- **Prefill:** Die K80 ist schneller als die CPU. K80-B schafft 1,76× so viel (140,96 gegen 80,05 t/s), selbst die gedrosselte K80-A liegt vorn.
+- **Generation:** Die CPU ist knapp schneller als K80-B (14,40 gegen 12,17 t/s) und deutlich schneller als K80-A. Das liegt nicht an der Drosselung, denn auch die volle 175-W-Hälfte liegt dahinter.
+- **Die 3090** ist in beiden Werten weit vorn, bei der Generation etwa zehnmal so schnell wie CPU und K80.
+- Das passt zum whisper-Vergleich in 6.2, wo die K80 rund 1,7× schneller war als dieselbe CPU, vor allem im Encoder. Große Matrix-Multiplikationen (Prefill, whisper-Encoder) nutzen die K80 gut, die tokenweise Generation nicht.
+
+**Achtung bei eigenen CPU-Messungen:** Ein llama.cpp-Build mit CUDA-Backend rechnet bei `-ngl 0` große Batches (ab 32 Tokens) trotzdem auf einer sichtbaren GPU. Die Gewichte bleiben im RAM, der Prefill läuft aber auf der GPU. Ein erster Lauf ohne diese Vorsicht ergab so 836 t/s (7B) und 96,6 t/s (70B) Prefill „auf der CPU“, tatsächlich gerechnet auf der 3090. Für echte CPU-Werte `CUDA_VISIBLE_DEVICES=` leer setzen (oder einen Build ohne CUDA nehmen). Im Log steht dann `ggml_cuda_init: failed to initialize CUDA: no CUDA-capable device is detected`.
 
 ## 7. Offene Punkte
 
 - **Upstream:** Pull Request [ggml-org/llama.cpp#30338](https://github.com/ggml-org/llama.cpp/pull/30338), eingereicht 2026-10-11. Erste Review-Runde umgesetzt (Abschnitt 4.1), Endstand `6b3b848` und Messwerte am 2026-10-20 im Pull Request gemeldet. Offen ist, ob der Reviewer den neuen Parameter `src0_contiguous` so annimmt oder die Prüfung lieber an den Aufrufstellen hätte.
 - **Voller `test-backend-ops`-Lauf mit `6b3b848`:** steht noch aus (Abschnitt 6.4 lief mit `e0641ca`).
-- **Mehrere GPUs gemischter Generation:** Ursprünglicher Fehler mit RTX 3090 und K80 gleichzeitig sichtbar: `CUDA kernel mul_mat_vec_f has no device code compatible with CUDA arch 370. ggml-cuda.cu was compiled for: __CUDA_ARCH_LIST__`. Ein Build mit `37;86` erkennt alle Geräte (Abschnitt 6.6). Offen: ein vollständiger Lauf über alle Geräte und ein Modell, das auf beiden Karten gemeinsam läuft. Dass in der alten Meldung wörtlich `__CUDA_ARCH_LIST__` stand statt einer Architekturliste, deutet darauf hin, dass CUDA 11.4 dieses Makro noch nicht kennt (es kam mit CUDA 11.5).
+- **Mehrere GPUs gemischter Generation: erledigt** (Abschnitt 6.6). Ursprünglicher Fehler mit RTX 3090 und K80 gleichzeitig sichtbar: `CUDA kernel mul_mat_vec_f has no device code compatible with CUDA arch 370. ggml-cuda.cu was compiled for: __CUDA_ARCH_LIST__`. Mit einem Build für `37;86` laufen 3090 und K80 gemeinsam und rechnen korrekt. Dass in der alten Meldung wörtlich `__CUDA_ARCH_LIST__` stand statt einer Architekturliste, deutet darauf hin, dass CUDA 11.4 dieses Makro noch nicht kennt (es kam mit CUDA 11.5). Mit genau dem damaligen Binary nachgestellt wurde der Fehler nicht.
 - **whisper mit Fassung 2:** noch nicht gemessen.
 - **ECC aus:** Effekt auf die Generation nicht gemessen (Abschnitt 6.5).
 - **Fehler C auf M40 und P100:** vermutlich ebenfalls betroffen, ungetestet. Mit Fassung 2 nutzen auch diese Karten MMQ für die betroffenen Fälle, das ist ebenfalls ungetestet.

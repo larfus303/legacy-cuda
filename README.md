@@ -32,11 +32,11 @@ Das Ziel: Weniger Karten landen als Elektroschrott, weil sie sich einrichten las
 |---|---|---|---|
 | `CUBLAS_STATUS_ARCH_MISMATCH` in whisper.cpp / llama.cpp | Kepler (K80, K40) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [v2](patches/ggml/cuda-kepler-mul-mat-v2.patch) |
 | `GGML_ASSERT(convert_func != nullptr)` bei quantisierten Modellen | Karten unter CC 6.1 (K80 getestet; M40, P100 vermutlich) | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md) | [v2](patches/ggml/cuda-kepler-mul-mat-v2.patch) |
-| K80 und neuere Karte in einem Programm (`no kernel image` / `no device code compatible with CUDA arch 370`) | Mischbetrieb, z. B. K80 + RTX 3090 | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md), Abschnitt 6.6 | Build-Einstellung `-DCMAKE_CUDA_ARCHITECTURES="37;86"` |
+| K80 und neuere Karte in einem Programm (`no kernel image` / `no device code compatible with CUDA arch 370`) | Mischbetrieb, z. B. K80 + RTX 3090 | [docs/kepler-cublas-arch-mismatch.md](docs/kepler-cublas-arch-mismatch.md), Abschnitt 6.6, und [Messbericht](docs/messberichte/messbericht-k80-mischbetrieb-2026-10-20.md) | Build-Einstellung `-DCMAKE_CUDA_ARCHITECTURES="37;86"` |
 
 Der Patch v2 entspricht dem Stand des Pull Requests nach der ersten Review-Runde. Die älteren Patches 0001/0002 (Fassung 1) liegen in [`patches/ggml/v1/`](patches/ggml/v1/).
 
-**Betriebstipp K80:** In llama.cpp `-fa 1` (Flash Attention) setzen, das macht die Generation rund 4 % schneller. `-ub` nicht unter 512 setzen. Messwerte im Dokument, Abschnitt 6.5.
+**Betriebstipp K80:** In llama.cpp `-fa 1` (Flash Attention) setzen, das macht die Generation rund 4 % schneller. `-ub` nicht unter 512 setzen. Messwerte im Dokument, Abschnitt 6.5. Vergleich K80 gegen CPU und 3090 in Abschnitt 6.7.
 
 ### Verzeichnisstruktur
 
@@ -63,7 +63,8 @@ scripts/    Mess- und Hilfsskripte
 - [ ] Konzeptdatei: Ziele, Umfang und Aufbau des Projekts
 - [ ] Weitere Karten (M40, P40, P100, V100) aufnehmen
 - [ ] Fehler C auf M40 / P100 prüfen (vermutlich betroffen)
-- [ ] Mischbetrieb K80 + neuere Karte: Build `37;86` erkennt alle Karten, vollständiger Lauf über beide Karten steht aus
+- [x] Mischbetrieb K80 + RTX 3090: Build `37;86` läuft auf beiden Karten gemeinsam und rechnet korrekt (Perplexity gleich)
+- [x] LLM-Vergleich K80 / CPU / 3090 gemessen (Mistral-7B, Dolphin-70B über drei GPUs)
 
 ## Mitmachen
 
